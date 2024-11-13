@@ -46,7 +46,7 @@ services:
         condition: on-failure
 
   query_node:
-    scale: 4
+    container_name: query_node
     build:
       context: .
       dockerfile: dockerfiles/query_node.dockerfile
