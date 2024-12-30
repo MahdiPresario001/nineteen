@@ -2,21 +2,21 @@ receivers:
   otlp:
     protocols:
       http:
-        endpoint: 0.0.0.0:4317
+        endpoint: ${OTLP_RECEIVER_HTTP_ENDPOINT:-0.0.0.0:4317}
 
 exporters:
   otlp/tempo:
-    endpoint: tempo:4317
+    endpoint: ${TEMPO_EXPORTER_ENDPOINT:-tempo:4317}
     tls:
       insecure: true
 
   otlphttp/loki:
-    endpoint: http://loki:3100/otlp
+    endpoint: ${LOKI_EXPORTER_ENDPOINT:-http://loki:3100/otlp}
     tls:
       insecure: true
 
   prometheus:
-     endpoint: 0.0.0.0:9090
+     endpoint: ${PROMETHEUS_EXPORTER_ENDPOINT:-0.0.0.0:9090}
 
 service:
   pipelines:
