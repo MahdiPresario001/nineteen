@@ -1,5 +1,5 @@
 from typing import Any
-from redis.asyncio import Redis
+from redis.asyncio import Redis, BlockingConnectionPool
 import json
 from enum import Enum
 import copy
@@ -7,6 +7,37 @@ from fiber.logging_utils import get_logger
 
 
 logger = get_logger(__name__)
+
+def create_redis_pool(
+    host: str,
+    max_connections: int = 100,
+    timeout: float = 20.0,
+    idle_timeout: int = 20,
+    max_idle_connections: int | None = None,
+    retry_on_timeout: bool = True,
+    socket_keepalive: bool = True,
+    socket_timeout: float = 10.0,
+) -> BlockingConnectionPool:
+    pool_kwargs = {
+        "max_connections": max_connections,
+        "timeout": timeout,
+        "retry_on_timeout": retry_on_timeout,
+        "socket_timeout": socket_timeout,
+        "socket_keepalive": socket_keepalive,
+    }
+
+    if max_idle_connections is not None:
+        pool_kwargs["max_idle_connections"] = max_idle_connections
+
+    if "://" in host:
+        return BlockingConnectionPool.from_url(
+            host,
+            **pool_kwargs
+        )
+    else:
+        pool_kwargs["host"] = host
+        pool_kwargs["timeout"] = idle_timeout
+        return BlockingConnectionPool(**pool_kwargs)
 
 
 def _remove_enums(map: dict[Any, Any]) -> dict[Any, Any]:

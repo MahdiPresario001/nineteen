@@ -5,12 +5,12 @@ import os
 load_dotenv(os.getenv("ENV_FILE", ".vali.env"))
 
 import asyncio
-from redis.asyncio import Redis
 
 from fiber.logging_utils import get_logger
 import json
 from validator.query_node.src.query_config import Config
-from validator.utils.redis import redis_constants as rcst, redis_dataclasses as rdc
+from validator.utils.redis import redis_constants as rcst, redis_dataclasses as rdc, redis_utils as rutils
+from validator.utils.generic import generic_utils as gutils
 from validator.query_node.src.process_queries import process_task
 from validator.db.src.sql.nodes import get_vali_ss58_address
 from validator.db.src.database import PSQLDB
@@ -39,6 +39,7 @@ QUERY_NODE_FAILED_TASKS_COUNTER = metrics.get_meter(__name__).create_counter(
     unit="1"
 )
 
+
 async def load_config() -> Config:
     wallet_name = os.getenv("WALLET_NAME", "default")
     hotkey_name = os.getenv("HOTKEY_NAME", "default")
@@ -66,10 +67,28 @@ async def load_config() -> Config:
         ss58_address = await get_vali_ss58_address(psql_db, netuid)
         await asyncio.sleep(0.1)
 
-    keypair = chain_utils.load_hotkey_keypair(wallet_name=wallet_name, hotkey_name=hotkey_name)
+    try:
+        keypair = chain_utils.load_hotkey_keypair(wallet_name=wallet_name, hotkey_name=hotkey_name)
+
+    except (ValueError, FileNotFoundError) as e:
+        logger.info("Attempting to use WALLET_SECRET_SEED environment variable")
+        secret_seed = os.getenv("WALLET_SECRET_SEED", None)
+        if secret_seed:
+            try:
+                keypair = gutils.load_hotkey_keypair_from_seed(secret_seed)
+            except Exception as e:
+                logger.error(f"Failed to load keypair from seed: {str(e)}")
+                raise ValueError(f"Invalid secret seed provided: {str(e)}")
+        else:
+            logger.error("WALLET_SECRET_SEED environment variable not set")
+            raise ValueError(f"Could not load wallet from path and WALLET_SECRET_SEED env var is not set. Original error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error loading hotkey from wallet: {str(e)}")
+        raise
+    redis_pool = rutils.create_redis_pool(redis_host)
 
     return Config(
-        redis_db=Redis(host=redis_host),
+        redis_db=redis_pool,
         psql_db=psql_db,
         netuid=netuid,
         ss58_address=ss58_address,

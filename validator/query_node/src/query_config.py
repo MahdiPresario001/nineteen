@@ -3,7 +3,7 @@ from fiber import Keypair
 import httpx
 from fiber.logging_utils import get_logger
 from validator.db.src.database import PSQLDB
-from redis.asyncio import Redis
+from redis.asyncio import Redis, BlockingConnectionPool
 
 logger = get_logger(__name__)
 
@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 class Config:
     keypair: Keypair
     psql_db: PSQLDB
-    redis_db: Redis
+    redis_db: Redis | BlockingConnectionPool
     ss58_address: str
     netuid: int
     httpx_client: httpx.AsyncClient = httpx.AsyncClient()

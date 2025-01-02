@@ -4,7 +4,7 @@ import logging
 import time
 from typing import AsyncGenerator
 
-
+from substrateinterface import Keypair
 from fiber.logging_utils import get_logger
 from validator.utils.generic import generic_constants as gcst
 
@@ -34,3 +34,12 @@ def get_error_event(job_id: str, error_message: str | None, status_code: int) ->
 
 def get_success_event(content: str, job_id: str, status_code: int) -> str:
     return json.dumps({gcst.JOB_ID: job_id, gcst.STATUS_CODE: status_code, gcst.CONTENT: content})
+
+
+def load_hotkey_keypair_from_seed(secret_seed: str) -> Keypair:
+    try:
+        keypair = Keypair.create_from_seed(secret_seed)
+        logger.info("Loaded keypair from seed directly!")
+        return keypair
+    except Exception as e:
+        raise ValueError(f"Failed to load keypair: {str(e)}")

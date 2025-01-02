@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from redis.asyncio import Redis
+from redis.asyncio import Redis, BlockingConnectionPool
 
 from fiber.logging_utils import get_logger
 
@@ -9,6 +9,8 @@ from fiber.chain import chain_utils
 
 
 from validator.db.src.database import PSQLDB
+from validator.utils.redis import redis_utils as rutils
+from validator.utils.generic import generic_utils as gutils
 
 import httpx
 
@@ -23,7 +25,7 @@ class Config:
     substrate: SubstrateInterface
     keypair: Keypair
     psql_db: PSQLDB
-    redis_db: Redis
+    redis_db: Redis | BlockingConnectionPool
     subtensor_network: str
     subtensor_address: str | None
     gpu_server_address: str | None
@@ -72,7 +74,25 @@ def load_config() -> Config:
         substrate = interface.get_substrate(subtensor_network=subtensor_network, subtensor_address=subtensor_address)
     else:
         substrate = None
-    keypair = chain_utils.load_hotkey_keypair(wallet_name=wallet_name, hotkey_name=hotkey_name)
+
+    try:
+        keypair = chain_utils.load_hotkey_keypair(wallet_name=wallet_name, hotkey_name=hotkey_name)
+
+    except (ValueError, FileNotFoundError) as e:
+        logger.info("Attempting to use WALLET_SECRET_SEED environment variable")
+        secret_seed = os.getenv("WALLET_SECRET_SEED", None)
+        if secret_seed:
+            try:
+                keypair = gutils.load_hotkey_keypair_from_seed(secret_seed)
+            except Exception as e:
+                logger.error(f"Failed to load keypair from seed: {str(e)}")
+                raise ValueError(f"Invalid secret seed provided: {str(e)}")
+        else:
+            logger.error("WALLET_SECRET_SEED environment variable not set")
+            raise ValueError(f"Could not load wallet from path and WALLET_SECRET_SEED env var is not set. Original error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error loading hotkey from wallet: {str(e)}")
+        raise
 
     default_capacity_to_score_multiplier = 0.1 if subtensor_network == "test" else 1.0
     capacity_to_score_multiplier = float(os.getenv("CAPACITY_TO_SCORE_MULTIPLIER", default_capacity_to_score_multiplier))
@@ -87,11 +107,13 @@ def load_config() -> Config:
         os.getenv("SET_METAGRAPH_WEIGHTS_WITH_HIGH_UPDATED_TO_NOT_DEREG", "false").lower() == "true"
     )
 
+    redis_pool = rutils.create_redis_pool(redis_host)
+
     return Config(
         substrate=substrate,  # type: ignore
         keypair=keypair,
         psql_db=PSQLDB(),
-        redis_db=Redis(host=redis_host),
+        redis_db=redis_pool,
         subtensor_network=subtensor_network,
         subtensor_address=subtensor_address,
         netuid=netuid,
